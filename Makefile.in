@@ -1,0 +1,67 @@
+# Makefile.in — processed by ./configure to produce Makefile
+# Do not edit Makefile directly; edit this file instead.
+
+PACKAGE = @PACKAGE@
+VERSION = @VERSION@
+
+CC      = @CC@
+CFLAGS  = @CFLAGS@
+PREFIX  = @PREFIX@
+BINDIR  = @BINDIR@
+
+SRCDIR  = src
+TESTDIR = tests
+
+SRCS    = $(SRCDIR)/main.c $(SRCDIR)/cardano.c
+OBJS    = $(SRCS:.c=.o)
+BIN     = $(PACKAGE)
+
+TEST_SRCS = $(TESTDIR)/test_cardano.c $(TESTDIR)/test_json_output.c
+TESTS     = $(TEST_SRCS:.c=)
+
+.PHONY: all clean distclean install uninstall check
+
+all: $(BIN)
+
+$(BIN): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
+
+$(SRCDIR)/%.o: $(SRCDIR)/%.c
+	$(CC) $(CFLAGS) -I. -I$(SRCDIR) -c -o $@ $<
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+$(TESTDIR)/%: $(TESTDIR)/%.c $(SRCDIR)/cardano.c
+	$(CC) $(CFLAGS) -I. -I$(SRCDIR) -o $@ $^
+
+check: $(TESTS)
+	@failed=0; \
+	for t in $(TESTS); do \
+	    printf 'running %s ... ' "$$t"; \
+	    if ./$$t; then echo OK; else echo FAILED; failed=$$((failed+1)); fi; \
+	done; \
+	[ $$failed -eq 0 ] || { echo "$$failed test(s) failed"; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Install / uninstall
+# ---------------------------------------------------------------------------
+
+install: $(BIN)
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 755 $(BIN) $(DESTDIR)$(BINDIR)/$(BIN)
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/$(BIN)
+
+# ---------------------------------------------------------------------------
+# Clean
+# ---------------------------------------------------------------------------
+
+clean:
+	rm -f $(OBJS) $(BIN) $(TESTS)
+
+distclean: clean
+	rm -f Makefile config.h
+	rm -rf autom4te.cache

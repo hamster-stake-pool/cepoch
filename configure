@@ -1,0 +1,154 @@
+#!/bin/sh
+# configure - build configuration for cepoch
+set -e
+
+PACKAGE=cepoch
+VERSION=0.1.0
+
+# Defaults
+PREFIX=/usr/local
+BINDIR=
+ENABLE_DEBUG=no
+CC=${CC:-}
+
+# ---------------------------------------------------------------------------
+# Argument parsing
+# ---------------------------------------------------------------------------
+
+for arg; do
+    case "$arg" in
+        --prefix=*)       PREFIX="${arg#*=}"  ;;
+        --bindir=*)       BINDIR="${arg#*=}"  ;;
+        --enable-debug)   ENABLE_DEBUG=yes    ;;
+        --disable-debug)  ENABLE_DEBUG=no     ;;
+        --help|-h)
+            cat <<'EOF'
+Usage: ./configure [OPTIONS]
+
+  --prefix=PATH       installation prefix            (default: /usr/local)
+  --bindir=PATH       binary installation directory  (default: PREFIX/bin)
+  --enable-debug      debug build (-g -O0 -DDEBUG)
+  --disable-debug     release build (default)
+  --help              show this message
+EOF
+            exit 0
+            ;;
+        *)
+            echo "configure: unrecognized option '$arg'" >&2
+            echo "Run './configure --help' for usage." >&2
+            exit 1
+            ;;
+    esac
+done
+
+[ -z "$BINDIR" ] && BINDIR="$PREFIX/bin"
+
+# ---------------------------------------------------------------------------
+# Detect C compiler
+# ---------------------------------------------------------------------------
+
+if [ -z "$CC" ]; then
+    for candidate in gcc clang cc; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            CC="$candidate"
+            break
+        fi
+    done
+fi
+
+if [ -z "$CC" ]; then
+    echo "configure: error: no C compiler found (tried gcc, clang, cc)" >&2
+    exit 1
+fi
+
+echo "CC:     $CC"
+echo "PREFIX: $PREFIX"
+echo "BINDIR: $BINDIR"
+echo "DEBUG:  $ENABLE_DEBUG"
+
+# ---------------------------------------------------------------------------
+# Feature checks
+# ---------------------------------------------------------------------------
+
+TMPDIR=${TMPDIR:-/tmp}
+TMP_C="$TMPDIR/cepoch_conftest_$$.c"
+TMP_BIN="$TMPDIR/cepoch_conftest_$$"
+
+check_func() {
+    local name="$1" snippet="$2"
+    printf 'checking for %s... ' "$name"
+    printf '%s\n' "$snippet" > "$TMP_C"
+    if $CC -o "$TMP_BIN" "$TMP_C" >/dev/null 2>&1; then
+        echo yes
+        rm -f "$TMP_C" "$TMP_BIN"
+        return 0
+    else
+        echo no
+        rm -f "$TMP_C" "$TMP_BIN"
+        return 1
+    fi
+}
+
+if check_func gmtime_r \
+    '#define _POSIX_C_SOURCE 200112L
+#include <time.h>
+int main(void) { time_t t=0; struct tm r; gmtime_r(&t,&r); return 0; }'; then
+    HAVE_GMTIME_R="#define HAVE_GMTIME_R 1"
+else
+    HAVE_GMTIME_R="/* #undef HAVE_GMTIME_R */"
+fi
+
+if check_func localtime_r \
+    '#define _POSIX_C_SOURCE 200112L
+#include <time.h>
+int main(void) { time_t t=0; struct tm r; localtime_r(&t,&r); return 0; }'; then
+    HAVE_LOCALTIME_R="#define HAVE_LOCALTIME_R 1"
+else
+    HAVE_LOCALTIME_R="/* #undef HAVE_LOCALTIME_R */"
+fi
+
+rm -f "$TMP_C" "$TMP_BIN"
+
+# ---------------------------------------------------------------------------
+# Build flags
+# ---------------------------------------------------------------------------
+
+CFLAGS="-Wall -Wextra -Wpedantic -std=c99 -D_POSIX_C_SOURCE=200112L"
+if [ "$ENABLE_DEBUG" = "yes" ]; then
+    CFLAGS="$CFLAGS -g -O0 -DDEBUG"
+else
+    CFLAGS="$CFLAGS -O2 -DNDEBUG"
+fi
+
+# ---------------------------------------------------------------------------
+# Generate config.h
+# ---------------------------------------------------------------------------
+
+sed \
+    -e "s|@PACKAGE@|$PACKAGE|g" \
+    -e "s|@VERSION@|$VERSION|g" \
+    -e "s|@PREFIX@|$PREFIX|g"   \
+    -e "s|@HAVE_GMTIME_R@|$HAVE_GMTIME_R|g" \
+    -e "s|@HAVE_LOCALTIME_R@|$HAVE_LOCALTIME_R|g" \
+    config.h.in > config.h
+
+echo "generated config.h"
+
+# ---------------------------------------------------------------------------
+# Generate Makefile
+# ---------------------------------------------------------------------------
+
+# Escape special chars in CFLAGS for sed (the '|' delimiter is safe here
+# as long as values don't contain '|').
+sed \
+    -e "s|@CC@|$CC|g"           \
+    -e "s|@CFLAGS@|$CFLAGS|g"   \
+    -e "s|@PREFIX@|$PREFIX|g"   \
+    -e "s|@BINDIR@|$BINDIR|g"   \
+    -e "s|@PACKAGE@|$PACKAGE|g" \
+    -e "s|@VERSION@|$VERSION|g" \
+    Makefile.in > Makefile
+
+echo "generated Makefile"
+echo ""
+echo "Configuration complete.  Run 'make' to build."

@@ -1,0 +1,61 @@
+Installing cepoch
+=================
+
+Requirements
+------------
+  - A C compiler: gcc or clang
+  - make
+  - sh (POSIX shell)
+
+Quick Start
+-----------
+  ./configure
+  make
+  make install
+
+This installs the `cepoch` binary to /usr/local/bin.
+
+Configuration Options
+---------------------
+Run ./configure --help to see all available options:
+
+  --prefix=PATH
+      Set the installation prefix.  The binary will be placed in
+      PREFIX/bin.  Default: /usr/local
+
+  --bindir=PATH
+      Override the binary directory directly.
+      Default: PREFIX/bin
+
+  --enable-debug
+      Build with debug symbols and no optimisation (-g -O0 -DDEBUG).
+
+  --disable-debug
+      Build an optimised release binary (default, -O2 -DNDEBUG).
+
+Example: install to /opt/cepoch
+  ./configure --prefix=/opt/cepoch
+  make
+  make install
+
+Example: debug build, keep in the current directory
+  ./configure --enable-debug
+  make
+
+Running the Tests
+-----------------
+  make check
+
+All tests must pass before you report a bug or submit a patch.
+
+Uninstalling
+------------
+There is no `make uninstall` target.  Remove the binary manually:
+
+  rm /usr/local/bin/cepoch   # adjust path if you used --prefix
+
+Cleaning Up
+-----------
+  make clean       # removes object files and the cepoch binary
+  make distclean   # also removes Makefile and config.h (run configure again
+                   # before the next build)
