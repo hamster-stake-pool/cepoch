@@ -11,8 +11,9 @@ A lightweight C command-line tool for querying Cardano blockchain epoch and slot
 - Show the current epoch, absolute slot, epoch-slot, and time remaining
 - Query by epoch number, absolute slot, epoch-slot, or ISO-8601 UTC timestamp
 - Human-readable or JSON output
-- No external dependencies — all calculations are done offline using hardcoded mainnet parameters
-- Covers both the Byron era (epochs 0–207) and the Shelley+ era (epoch 208+)
+- Supports **mainnet**, **Pre-Production testnet** (`--testnet-magic 1`), and **Preview testnet** (`--testnet-magic 2`)
+- No external dependencies — all calculations are done offline against built-in network parameters
+- Covers both the Byron era and the Shelley+ era for each network
 - Runs on Linux, macOS, and any POSIX-compatible system
 
 ## Quick Start
@@ -32,25 +33,48 @@ cepoch
 ## Usage
 
 ```
-Usage: cepoch [OPTION]
+Usage: cepoch [NETWORK] [OPTION]
 
-  (no options)                     show current Cardano epoch info
-  --epoch N                        info for epoch N
-  --slot N                         info for absolute slot N
-  --epoch-slot N                   info for epoch-slot N in the current epoch
-  --date YYYY-MM-DDTHH:MM:SSZ      info for a UTC date/time
-  --output json                    output result as JSON
-  --help                           show this help
+Network selection (default: --mainnet):
+  --mainnet                  Cardano mainnet (default)
+  --testnet-magic 1          Pre-Production testnet
+  --testnet-magic 2          Preview testnet
+
+Query options:
+  (no query option)          show current epoch info
+  --epoch N                  info for epoch N
+  --slot N                   info for absolute slot N
+  --epoch-slot N             info for epoch-slot N in the current epoch
+  --date YYYY-MM-DDTHH:MM:SSZ  info for a UTC date/time
+
+Output options:
+  --output json              output result as JSON
+
+Miscellaneous:
+  --version                  show version information
+  --help                     show this help
 ```
 
 ### Examples
 
 ```sh
-# Current epoch
+# Current epoch (mainnet, default)
 cepoch
+
+# Explicitly select mainnet
+cepoch --mainnet
+
+# Pre-Production testnet
+cepoch --testnet-magic 1
+
+# Preview testnet
+cepoch --testnet-magic 2
 
 # Info for a specific epoch
 cepoch --epoch 500
+
+# Info for a specific epoch on the Pre-Production testnet
+cepoch --testnet-magic 1 --epoch 100
 
 # Info for an absolute slot
 cepoch --slot 123456789
@@ -63,12 +87,16 @@ cepoch --date 2024-01-15T12:00:00Z
 
 # JSON output (combinable with any option)
 cepoch --output json
-cepoch --epoch 500 --output json
+cepoch --testnet-magic 1 --epoch 100 --output json
+
+# Version information
+cepoch --version
 ```
 
 ### Sample Output
 
 ```
+Network:       mainnet
 Epoch:         523
 Absolute Slot: 127814400
 Epoch Slot:    259200 / 432000
@@ -80,6 +108,7 @@ UTC time:      2024-09-29 21:44:51 UTC
 
 ```json
 {
+  "network": "mainnet",
   "epoch": 523,
   "absolute_slot": 127814400,
   "epoch_slot": 259200,
@@ -121,14 +150,30 @@ make install
 make check
 ```
 
-## Cardano Mainnet Parameters
+## Network Parameters
+
+All calculations are performed offline against built-in parameters — no running Cardano node or internet connection is required.
+
+### Mainnet (`--mainnet`)
 
 | Era | Start | Slot length | Epoch length |
 |---|---|---|---|
-| Byron | 2017-09-23 21:44:51 UTC | 20 s | 21 600 slots (~5 days) |
-| Shelley+ | 2020-07-29 21:44:51 UTC | 1 s | 432 000 slots (~5 days) |
+| Byron (epochs 0–207) | 2017-09-23 21:44:51 UTC | 20 s | 21 600 slots (~5 days) |
+| Shelley+ (epoch 208+) | 2020-07-29 21:44:51 UTC | 1 s | 432 000 slots (~5 days) |
 
-All calculations are performed offline against these hardcoded parameters — no running Cardano node or internet connection is required.
+### Pre-Production testnet (`--testnet-magic 1`)
+
+| Era | Start | Slot length | Epoch length |
+|---|---|---|---|
+| Byron (epochs 0–3) | 2022-06-01 00:00:00 UTC | 20 s | 21 600 slots (~5 days) |
+| Shelley+ (epoch 4+) | 2022-06-21 00:00:00 UTC | 1 s | 432 000 slots (~5 days) |
+
+### Preview testnet (`--testnet-magic 2`)
+
+| Era | Start | Slot length | Epoch length |
+|---|---|---|---|
+| Byron (epoch 0) | 2022-10-25 00:00:00 UTC | 20 s | 4 320 slots (~1 day) |
+| Shelley+ (epoch 1+) | 2022-10-26 00:00:00 UTC | 1 s | 86 400 slots (1 day) |
 
 ## Requirements
 

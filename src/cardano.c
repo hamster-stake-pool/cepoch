@@ -6,37 +6,118 @@
  * SPDX-License-Identifier: MIT
  */
 #include "cardano.h"
+#include <string.h>
 #include <time.h>
 
+/* ------------------------------------------------------------------
+ * Predefined network configurations
+ * ------------------------------------------------------------------ */
+
+const cardano_network_params_t CARDANO_MAINNET = {
+    "mainnet",
+    UINT64_C(1506203091),   /* byron_genesis_time:    2017-09-23 21:44:51 UTC */
+    UINT64_C(20),           /* byron_slot_duration:   20 s/slot               */
+    UINT64_C(21600),        /* byron_epoch_slots:     21600 slots/epoch        */
+    UINT64_C(208),          /* shelley_start_epoch:   epoch 208                */
+    UINT64_C(4492800),      /* shelley_start_slot:    slot 4492800             */
+    UINT64_C(1596059091),   /* shelley_start_time:    2020-07-29 21:44:51 UTC  */
+    UINT64_C(1),            /* shelley_slot_duration: 1 s/slot                 */
+    UINT64_C(432000)        /* shelley_epoch_slots:   432000 slots/epoch       */
+};
+
+const cardano_network_params_t CARDANO_PREPROD = {
+    "preprod",
+    UINT64_C(1654041600),   /* byron_genesis_time:    2022-06-01 00:00:00 UTC  */
+    UINT64_C(20),           /* byron_slot_duration:   20 s/slot                */
+    UINT64_C(21600),        /* byron_epoch_slots:     21600 slots/epoch        */
+    UINT64_C(4),            /* shelley_start_epoch:   epoch 4                  */
+    UINT64_C(86400),        /* shelley_start_slot:    slot 86400 (4*21600)     */
+    UINT64_C(1655769600),   /* shelley_start_time:    2022-06-21 00:00:00 UTC  */
+    UINT64_C(1),            /* shelley_slot_duration: 1 s/slot                 */
+    UINT64_C(432000)        /* shelley_epoch_slots:   432000 slots/epoch       */
+};
+
 /*
- * Core conversion: absolute slot -> cardano_info_t.
- * All public functions ultimately call this.
+ * Preview testnet (October 2022 reset, network magic 2):
+ *   Byron epoch 0: slots 0–4319, 20 s/slot, 4320 slots/epoch (k=432, k×10)
+ *     genesis: 2022-10-25 00:00:00 UTC  (Unix: 1666656000)
+ *   Shelley era starts at epoch 1, absolute slot 4320:
+ *     time:         2022-10-26 00:00:00 UTC  (Unix: 1666742400)
+ *     slot length:  1 s/slot
+ *     epoch length: 86400 slots (1 day)
+ *
+ * Source: byron-genesis.json (startTime, slotDuration, k) and
+ *         shelley-genesis.json (systemStart, slotLength, epochLength).
  */
+const cardano_network_params_t CARDANO_PREVIEW = {
+    "preview",
+    UINT64_C(1666656000),   /* byron_genesis_time:    2022-10-25 00:00:00 UTC  */
+    UINT64_C(20),           /* byron_slot_duration:   20 s/slot                */
+    UINT64_C(4320),         /* byron_epoch_slots:     4320 slots/epoch (k=432) */
+    UINT64_C(1),            /* shelley_start_epoch:   epoch 1                  */
+    UINT64_C(4320),         /* shelley_start_slot:    slot 4320                */
+    UINT64_C(1666742400),   /* shelley_start_time:    2022-10-26 00:00:00 UTC  */
+    UINT64_C(1),            /* shelley_slot_duration: 1 s/slot                 */
+    UINT64_C(86400)         /* shelley_epoch_slots:   86400 slots/epoch (1 day)*/
+};
+
+/* ------------------------------------------------------------------
+ * Active network (default: mainnet)
+ * ------------------------------------------------------------------ */
+static cardano_network_params_t g_network = {
+    "mainnet",
+    UINT64_C(1506203091),
+    UINT64_C(20),
+    UINT64_C(21600),
+    UINT64_C(208),
+    UINT64_C(4492800),
+    UINT64_C(1596059091),
+    UINT64_C(1),
+    UINT64_C(432000)
+};
+
+void cardano_set_network(const cardano_network_params_t *net)
+{
+    g_network = *net;
+}
+
+const char *cardano_network_name(void)
+{
+    return g_network.name;
+}
+
+/* ------------------------------------------------------------------
+ * Core conversion: absolute slot -> cardano_info_t.
+ * All public query functions ultimately call this.
+ * ------------------------------------------------------------------ */
 static cardano_info_t slot_to_info(uint64_t absolute_slot)
 {
+    const cardano_network_params_t *net = &g_network;
     cardano_info_t info;
     info.absolute_slot = absolute_slot;
 
-    if (absolute_slot < CARDANO_SHELLEY_START_SLOT) {
+    if (absolute_slot < net->shelley_start_slot) {
         /* Byron era */
-        uint64_t byron_epoch     = absolute_slot / CARDANO_BYRON_EPOCH_SLOTS;
-        info.epoch               = byron_epoch;
-        info.epoch_slot          = absolute_slot % CARDANO_BYRON_EPOCH_SLOTS;
-        info.epoch_start_time    = (time_t)(CARDANO_BYRON_GENESIS_TIME
-            + byron_epoch * CARDANO_BYRON_EPOCH_SLOTS * CARDANO_BYRON_SLOT_DURATION);
-        info.epoch_end_time      = (time_t)((uint64_t)info.epoch_start_time
-            + CARDANO_BYRON_EPOCH_SLOTS * CARDANO_BYRON_SLOT_DURATION);
+        uint64_t byron_epoch   = absolute_slot / net->byron_epoch_slots;
+        info.epoch             = byron_epoch;
+        info.epoch_slot        = absolute_slot % net->byron_epoch_slots;
+        info.epoch_slots_total = net->byron_epoch_slots;
+        info.epoch_start_time  = (time_t)(net->byron_genesis_time
+            + byron_epoch * net->byron_epoch_slots * net->byron_slot_duration);
+        info.epoch_end_time    = (time_t)((uint64_t)info.epoch_start_time
+            + net->byron_epoch_slots * net->byron_slot_duration);
     } else {
         /* Shelley+ era */
-        uint64_t shelley_slots   = absolute_slot - CARDANO_SHELLEY_START_SLOT;
-        uint64_t shelley_epoch   = shelley_slots / CARDANO_SHELLEY_EPOCH_SLOTS;
-        info.epoch               = CARDANO_SHELLEY_START_EPOCH + shelley_epoch;
-        info.epoch_slot          = shelley_slots % CARDANO_SHELLEY_EPOCH_SLOTS;
-        info.epoch_start_time    = (time_t)(CARDANO_SHELLEY_START_TIME
-            + shelley_epoch * CARDANO_SHELLEY_EPOCH_SLOTS
-                             * CARDANO_SHELLEY_SLOT_DURATION);
-        info.epoch_end_time      = (time_t)((uint64_t)info.epoch_start_time
-            + CARDANO_SHELLEY_EPOCH_SLOTS * CARDANO_SHELLEY_SLOT_DURATION);
+        uint64_t shelley_slots = absolute_slot - net->shelley_start_slot;
+        uint64_t shelley_epoch = shelley_slots / net->shelley_epoch_slots;
+        info.epoch             = net->shelley_start_epoch + shelley_epoch;
+        info.epoch_slot        = shelley_slots % net->shelley_epoch_slots;
+        info.epoch_slots_total = net->shelley_epoch_slots;
+        info.epoch_start_time  = (time_t)(net->shelley_start_time
+            + shelley_epoch * net->shelley_epoch_slots
+                             * net->shelley_slot_duration);
+        info.epoch_end_time    = (time_t)((uint64_t)info.epoch_start_time
+            + net->shelley_epoch_slots * net->shelley_slot_duration);
     }
 
     return info;
@@ -47,18 +128,24 @@ static cardano_info_t slot_to_info(uint64_t absolute_slot)
  */
 static uint64_t time_to_slot(time_t t)
 {
+    const cardano_network_params_t *net = &g_network;
     uint64_t ut = (uint64_t)t;
 
-    if (ut < CARDANO_SHELLEY_START_TIME) {
-        /* Byron era: one slot every 20 seconds */
-        if (ut < CARDANO_BYRON_GENESIS_TIME)
-            ut = CARDANO_BYRON_GENESIS_TIME; /* clamp to genesis */
-        return (ut - CARDANO_BYRON_GENESIS_TIME) / CARDANO_BYRON_SLOT_DURATION;
+    if (ut < net->shelley_start_time) {
+        /* Byron era: one slot every byron_slot_duration seconds */
+        if (ut < net->byron_genesis_time)
+            ut = net->byron_genesis_time; /* clamp to genesis */
+        return (ut - net->byron_genesis_time) / net->byron_slot_duration;
     }
 
-    /* Shelley+ era: one slot per second */
-    return CARDANO_SHELLEY_START_SLOT + (ut - CARDANO_SHELLEY_START_TIME);
+    /* Shelley+ era */
+    return net->shelley_start_slot
+         + (ut - net->shelley_start_time) / net->shelley_slot_duration;
 }
+
+/* ------------------------------------------------------------------
+ * Public API
+ * ------------------------------------------------------------------ */
 
 cardano_info_t cardano_current_info(void)
 {
@@ -67,14 +154,15 @@ cardano_info_t cardano_current_info(void)
 
 cardano_info_t cardano_info_for_epoch(uint64_t epoch)
 {
+    const cardano_network_params_t *net = &g_network;
     uint64_t absolute_slot;
 
-    if (epoch < CARDANO_SHELLEY_START_EPOCH) {
-        absolute_slot = epoch * CARDANO_BYRON_EPOCH_SLOTS;
+    if (epoch < net->shelley_start_epoch) {
+        absolute_slot = epoch * net->byron_epoch_slots;
     } else {
-        uint64_t shelley_epoch = epoch - CARDANO_SHELLEY_START_EPOCH;
-        absolute_slot = CARDANO_SHELLEY_START_SLOT
-                      + shelley_epoch * CARDANO_SHELLEY_EPOCH_SLOTS;
+        uint64_t shelley_epoch = epoch - net->shelley_start_epoch;
+        absolute_slot = net->shelley_start_slot
+                      + shelley_epoch * net->shelley_epoch_slots;
     }
 
     return slot_to_info(absolute_slot);

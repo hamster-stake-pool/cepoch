@@ -8,10 +8,13 @@
  * Displays Cardano epoch/slot information.
  *
  * Usage:
- *   cepoch                         current epoch info
- *   cepoch --epoch N               info for epoch N
- *   cepoch --slot N                info for absolute slot N
- *   cepoch --epoch-slot N          info for epoch-slot N in the current epoch
+ *   cepoch                              current epoch info (mainnet)
+ *   cepoch --mainnet                    explicitly select mainnet (default)
+ *   cepoch --testnet-magic 1            Pre-Production testnet
+ *   cepoch --testnet-magic 2            Preview testnet
+ *   cepoch --epoch N                    info for epoch N
+ *   cepoch --slot N                     info for absolute slot N
+ *   cepoch --epoch-slot N               info for epoch-slot N in the current epoch
  *   cepoch --date YYYY-MM-DDTHH:MM:SSZ  info for a UTC timestamp
  */
 #include "config.h"
@@ -146,10 +149,11 @@ static void print_info(const cardano_info_t *info)
 {
     display_fields_t f = build_display_fields(info);
 
+    printf("Network:       %s\n",                  cardano_network_name());
     printf("Epoch:         %" PRIu64 "\n",         info->epoch);
     printf("Absolute Slot: %" PRIu64 "\n",         info->absolute_slot);
     printf("Epoch Slot:    %" PRIu64 " / %" PRIu64 "\n",
-           info->epoch_slot, CARDANO_SHELLEY_EPOCH_SLOTS);
+           info->epoch_slot, info->epoch_slots_total);
     printf("Time left:     %s\n",                  f.remaining_str);
     printf("Epoch range:   %s UTC - %s UTC\n",     f.start_str, f.end_str);
     printf("Local time:    %s\n",                  f.local_str);
@@ -161,10 +165,11 @@ static void print_info_json(const cardano_info_t *info)
     display_fields_t f = build_display_fields(info);
 
     printf("{\n");
+    printf("  \"network\": \"%s\",\n",              cardano_network_name());
     printf("  \"epoch\": %" PRIu64 ",\n",            info->epoch);
     printf("  \"absolute_slot\": %" PRIu64 ",\n",    info->absolute_slot);
     printf("  \"epoch_slot\": %" PRIu64 ",\n",       info->epoch_slot);
-    printf("  \"epoch_slots_total\": %" PRIu64 ",\n", CARDANO_SHELLEY_EPOCH_SLOTS);
+    printf("  \"epoch_slots_total\": %" PRIu64 ",\n", info->epoch_slots_total);
     printf("  \"time_left_seconds\": %" PRId64 ",\n", (int64_t)f.remaining_seconds);
     printf("  \"time_left\": \"%s\",\n",              f.remaining_str);
     printf("  \"epoch_start_utc\": \"%s\",\n",        f.start_str);
@@ -203,14 +208,24 @@ static void print_delegation_notice(FILE *out)
 static void usage(const char *prog)
 {
     fprintf(stderr,
-        "Usage: %s [OPTION]\n"
+        "Usage: %s [NETWORK] [OPTION]\n"
         "\n"
-        "  (no options)               show current Cardano epoch info\n"
+        "Network selection (default: --mainnet):\n"
+        "  --mainnet                  Cardano mainnet (default)\n"
+        "  --testnet-magic 1          Pre-Production testnet\n"
+        "  --testnet-magic 2          Preview testnet\n"
+        "\n"
+        "Query options:\n"
+        "  (no query option)          show current epoch info\n"
         "  --epoch N                  info for epoch N\n"
         "  --slot N                   info for absolute slot N\n"
         "  --epoch-slot N             info for epoch-slot N in the current epoch\n"
         "  --date YYYY-MM-DDTHH:MM:SSZ  info for a UTC date/time\n"
+        "\n"
+        "Output options:\n"
         "  --output json              output result as JSON\n"
+        "\n"
+        "Miscellaneous:\n"
         "  --version                  show version information\n"
         "  --help                     show this help\n"
         "\n",
@@ -220,42 +235,76 @@ static void usage(const char *prog)
 
 int main(int argc, char *argv[])
 {
-    /* Pre-scan for --output json so it may appear anywhere on the command line */
     int i;
+
+    /* ------------------------------------------------------------------
+     * Pre-scan: process global flags that must be set before any queries.
+     * ------------------------------------------------------------------ */
     for (i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--output") == 0 && i + 1 < argc &&
-                strcmp(argv[i + 1], "json") == 0)
-            g_json_out = 1;
+        if (strcmp(argv[i], "--output") == 0) {
+            if (i + 1 < argc && strcmp(argv[i + 1], "json") == 0)
+                g_json_out = 1;
+
+        } else if (strcmp(argv[i], "--mainnet") == 0) {
+            cardano_set_network(&CARDANO_MAINNET);
+
+        } else if (strcmp(argv[i], "--testnet-magic") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "error: --testnet-magic requires a value\n");
+                return 1;
+            }
+            char *endp;
+            uint64_t magic = strtoull(argv[i + 1], &endp, 10);
+            if (*endp != '\0') {
+                fprintf(stderr, "error: invalid testnet magic '%s'\n", argv[i + 1]);
+                return 1;
+            }
+            if (magic == 1) {
+                cardano_set_network(&CARDANO_PREPROD);
+            } else if (magic == 2) {
+                cardano_set_network(&CARDANO_PREVIEW);
+            } else {
+                fprintf(stderr,
+                    "error: unsupported testnet magic %" PRIu64
+                    " (supported: 1 = preprod, 2 = preview)\n", magic);
+                return 1;
+            }
+            ++i; /* skip the value token in this loop */
+
+        } else if (strcmp(argv[i], "--help") == 0) {
+            usage(argv[0]);
+            return 0;
+
+        } else if (strcmp(argv[i], "--version") == 0) {
+            printf("%s %s\n", PACKAGE, VERSION);
+            printf("License: MIT — see LICENSE file or <https://opensource.org/licenses/MIT>\n");
+            printf("Copyright (c) 2026 Neal Allen Morrison <nmorrison@magister-technicus.de>\n");
+            print_delegation_notice(stdout);
+            return 0;
+        }
     }
 
-    if (argc == 1 || (argc == 3 && g_json_out)) {
-        cardano_info_t info = cardano_current_info();
-        output_info(&info);
-        return 0;
-    }
-
-    if (strcmp(argv[1], "--help") == 0) {
-        usage(argv[0]);
-        return 0;
-    }
-
-    if (strcmp(argv[1], "--version") == 0) {
-        printf("%s %s\n", PACKAGE, VERSION);
-        printf("License: MIT — see LICENSE file or <https://opensource.org/licenses/MIT>\n");
-        printf("Copyright (c) 2026 Neal Allen Morrison <nmorrison@magister-technicus.de>\n");
-        print_delegation_notice(stdout);
-        return 0;
-    }
+    /* ------------------------------------------------------------------
+     * Main processing loop — execute query options.
+     * ------------------------------------------------------------------ */
+    int mode_selected = 0;
 
     for (i = 1; i < argc; i++) {
         const char *opt = argv[i];
 
         if (strcmp(opt, "--output") == 0) {
-            /* already handled in pre-scan; consume the value argument */
-            if (i + 1 >= argc) {
-                fprintf(stderr, "error: --output requires a value\n");
-                return 1;
-            }
+            /* already handled; consume value */
+            ++i;
+            continue;
+
+        } else if (strcmp(opt, "--mainnet") == 0 ||
+                   strcmp(opt, "--help")    == 0 ||
+                   strcmp(opt, "--version") == 0) {
+            /* already handled in pre-scan */
+            continue;
+
+        } else if (strcmp(opt, "--testnet-magic") == 0) {
+            /* already handled in pre-scan; consume value */
             ++i;
             continue;
 
@@ -272,6 +321,7 @@ int main(int argc, char *argv[])
             }
             cardano_info_t info = cardano_info_for_epoch(epoch);
             output_info(&info);
+            mode_selected = 1;
 
         } else if (strcmp(opt, "--slot") == 0) {
             if (i + 1 >= argc) {
@@ -286,6 +336,7 @@ int main(int argc, char *argv[])
             }
             cardano_info_t info = cardano_info_for_slot(slot);
             output_info(&info);
+            mode_selected = 1;
 
         } else if (strcmp(opt, "--epoch-slot") == 0) {
             if (i + 1 >= argc) {
@@ -298,15 +349,17 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "error: invalid epoch-slot '%s'\n", argv[i]);
                 return 1;
             }
-            if (eslot >= CARDANO_SHELLEY_EPOCH_SLOTS) {
+            cardano_info_t cur = cardano_current_info();
+            if (eslot >= cur.epoch_slots_total) {
                 fprintf(stderr,
                     "error: epoch-slot %" PRIu64
                     " out of range (max %" PRIu64 ")\n",
-                    eslot, CARDANO_SHELLEY_EPOCH_SLOTS - 1);
+                    eslot, cur.epoch_slots_total - 1);
                 return 1;
             }
             cardano_info_t info = cardano_info_for_current_epoch_slot(eslot);
             output_info(&info);
+            mode_selected = 1;
 
         } else if (strcmp(opt, "--date") == 0) {
             if (i + 1 >= argc) {
@@ -323,12 +376,19 @@ int main(int argc, char *argv[])
             }
             cardano_info_t info = cardano_info_for_time(t);
             output_info(&info);
+            mode_selected = 1;
 
         } else {
             fprintf(stderr, "error: unknown option '%s'\n", opt);
             usage(argv[0]);
             return 1;
         }
+    }
+
+    /* No query option given: show current epoch info */
+    if (!mode_selected) {
+        cardano_info_t info = cardano_current_info();
+        output_info(&info);
     }
 
     return 0;
