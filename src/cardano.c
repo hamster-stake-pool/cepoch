@@ -27,38 +27,36 @@ const cardano_network_params_t CARDANO_MAINNET = {
 
 const cardano_network_params_t CARDANO_PREPROD = {
     "preprod",
-    UINT64_C(1654041600),   /* byron_genesis_time:    2022-06-01 00:00:00 UTC  */
+    UINT64_C(1648771200),   /* byron_genesis_time:    2022-04-01 00:00:00 UTC  */
     UINT64_C(20),           /* byron_slot_duration:   20 s/slot                */
     UINT64_C(21600),        /* byron_epoch_slots:     21600 slots/epoch        */
     UINT64_C(4),            /* shelley_start_epoch:   epoch 4                  */
     UINT64_C(86400),        /* shelley_start_slot:    slot 86400 (4*21600)     */
-    UINT64_C(1655769600),   /* shelley_start_time:    2022-06-21 00:00:00 UTC  */
+    UINT64_C(1650499200),   /* shelley_start_time:    2022-04-21 00:00:00 UTC  */
     UINT64_C(1),            /* shelley_slot_duration: 1 s/slot                 */
     UINT64_C(432000)        /* shelley_epoch_slots:   432000 slots/epoch       */
 };
 
 /*
- * Preview testnet (October 2022 reset, network magic 2):
- *   Byron epoch 0: slots 0–4319, 20 s/slot, 4320 slots/epoch (k=432, k×10)
- *     genesis: 2022-10-25 00:00:00 UTC  (Unix: 1666656000)
- *   Shelley era starts at epoch 1, absolute slot 4320:
- *     time:         2022-10-26 00:00:00 UTC  (Unix: 1666742400)
- *     slot length:  1 s/slot
- *     epoch length: 86400 slots (1 day)
+ * Preview testnet (network magic 2):
+ *   Pure Shelley from slot 0; no Byron era.
+ *   Shelley genesis: 2022-06-20 00:00:00 UTC  (Unix: 1655683200)
+ *   Epoch counter starts at 4 (epoch 0-3 do not exist on-chain).
+ *   slot length:  1 s/slot
+ *   epoch length: 432000 slots (5 days)
  *
- * Source: byron-genesis.json (startTime, slotDuration, k) and
- *         shelley-genesis.json (systemStart, slotLength, epochLength).
+ * Source: shelley-genesis.json (systemStart, slotLength, epochLength).
  */
 const cardano_network_params_t CARDANO_PREVIEW = {
     "preview",
-    UINT64_C(1666656000),   /* byron_genesis_time:    2022-10-25 00:00:00 UTC  */
-    UINT64_C(20),           /* byron_slot_duration:   20 s/slot                */
-    UINT64_C(4320),         /* byron_epoch_slots:     4320 slots/epoch (k=432) */
-    UINT64_C(1),            /* shelley_start_epoch:   epoch 1                  */
-    UINT64_C(4320),         /* shelley_start_slot:    slot 4320                */
-    UINT64_C(1666742400),   /* shelley_start_time:    2022-10-26 00:00:00 UTC  */
-    UINT64_C(1),            /* shelley_slot_duration: 1 s/slot                 */
-    UINT64_C(86400)         /* shelley_epoch_slots:   86400 slots/epoch (1 day)*/
+    UINT64_C(1655683200),   /* byron_genesis_time:    same as shelley (no Byron era) */
+    UINT64_C(20),           /* byron_slot_duration:   unused                    */
+    UINT64_C(432000),       /* byron_epoch_slots:     unused                    */
+    UINT64_C(4),            /* shelley_start_epoch:   epoch counter starts at 4 */
+    UINT64_C(0),            /* shelley_start_slot:    slot 0 (no Byron era)     */
+    UINT64_C(1655683200),   /* shelley_start_time:    2022-06-20 00:00:00 UTC   */
+    UINT64_C(1),            /* shelley_slot_duration: 1 s/slot                  */
+    UINT64_C(432000)        /* shelley_epoch_slots:   432000 slots/epoch        */
 };
 
 /* ------------------------------------------------------------------
